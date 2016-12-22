@@ -19,7 +19,9 @@ import qualified Data.Text as T
 import Data.Monoid ((<>))
 import Data.Char (isLower,isDigit)
 import Data.List (foldl')
-import qualified Data.Map as M 
+import qualified Data.Vector as V
+import qualified Data.Map as M
+import qualified Data.HashMap.Strict as HM
 import Control.Monad.Except (runExceptT)
 
 
@@ -49,7 +51,7 @@ type SocrataFilters = QueryMap SocrataValue
 addFilter::SocrataFilter->SocrataFilters->SocrataFilters
 addFilter (SocrataFilter c v) qm = M.insert c v qm
 
-newtype SocrataResult = SocrataResult T.Text deriving (Show,Generic)
+newtype SocrataResult = SocrataResult (V.Vector (HM.HashMap T.Text T.Text)) deriving (Generic,Show)
 instance FromJSON SocrataResult
 
 type SoQL = T.Text
@@ -63,36 +65,37 @@ instance (KnownSymbol sym, ToHttpApiData a, HasClient api)
   type Client (MultiQueryParams sym a :> api) =
     QueryMap a -> Client api
 
-  clientWithRoute Proxy req queryMap = 
+  clientWithRoute Proxy req queryMap =
     clientWithRoute (Proxy :: Proxy api)
                     (foldl' (\ req' (qn,mqv) -> appendToQueryString qn mqv req')
                             req
                             queryList
                     )
 
-    where queryList = M.toList ((Just . toQueryParam) <$> queryMap) 
+    where queryList = M.toList ((Just . toQueryParam) <$> queryMap)
 
 
 type SodaAPI = "resource" :> Capture "datasetID" DatasetIdentifier :> MultiQueryParams "filter" SocrataValue :> Get '[JSON] SocrataResult :<|>
-               "resource" :> Capture "datasetID" DatasetIdentifier :> QueryParam "$query" SoQL :> Get '[JSON] SocrataResult 
+               "resource" :> Capture "datasetID" DatasetIdentifier :> QueryParam "$query" SoQL :> Get '[JSON] SocrataResult
+
 sodaApi::Proxy SodaAPI
 sodaApi = Proxy
 
-filterReq :<|> soqlReq= client sodaApi
+filterReq :<|> soqlReq = client sodaApi
 
-testQuery :: Manager->ClientM SocrataResult
+testQuery :: Manager -> ClientM SocrataResult
 testQuery mgr = do
   let filterZip = SocrataFilter "zip_code" "11215"
       filterStreet = SocrataFilter "on_street_name" "PRESIDENT STREET"
-      filters = addFilter filterZip . addFilter filterStreet $ M.empty 
+      filters = addFilter filterZip . addFilter filterStreet $ M.empty
       baseUrl = BaseUrl Http "data.cityofnewyork.us" 80 ""
   filterReq (DatasetIdentifier "qiz3axqb") filters mgr baseUrl
 
-testSoQL :: Manager->ClientM SocrataResult
+testSoQL :: Manager -> ClientM SocrataResult
 testSoQL mgr = do
   let sql = "SELECT date,number_of_pedestrians_killed WHERE number_of_pedestrians_killed > 1 "
       baseUrl = BaseUrl Http "data.cityofnewyork.us" 80 ""
-  soqlReq (DatasetIdentifier "qiz3axqb") (Just sql) mgr baseUrl 
+  soqlReq (DatasetIdentifier "qiz3axqb") (Just sql) mgr baseUrl
 
 testRun:: IO ()
 testRun = do
@@ -100,4 +103,4 @@ testRun = do
   result <- runExceptT $ testSoQL mgr
   case result of
     Left err -> putStrLn $ "Error: " ++ (show err)
-    Right (SocrataResult t) -> putStrLn . T.unpack $ "Result: \n" <> t
+    Right (SocrataResult t) -> putStrLn $ "Result: \n" ++ (show t)
