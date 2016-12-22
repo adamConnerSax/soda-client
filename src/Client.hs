@@ -6,18 +6,22 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
-module SODA where
+module Client where
+
+import Types
+
 import Servant.API
 import Servant.Client
 import Servant.Common.Req
+
 import Web.HttpApiData (ToHttpApiData(..))
-import Network.HTTP.Client (newManager, defaultManagerSettings,Manager)
-import GHC.Generics
+import Network.HTTP.Client (newManager, defaultManagerSettings, Manager)
+import GHC.Generics (Generic)
 import Data.Aeson (FromJSON)
 import Data.Proxy (Proxy(Proxy))
 import qualified Data.Text as T
 import Data.Monoid ((<>))
-import Data.Char (isLower,isDigit)
+
 import Data.List (foldl')
 import qualified Data.Vector as V
 import qualified Data.Map as M
@@ -29,24 +33,7 @@ import Control.Monad.Except (runExceptT)
 import           Data.Typeable (Typeable)
 import           GHC.TypeLits (Symbol,KnownSymbol)
 
-data DatasetIdentifier = DatasetIdentifier T.Text
-instance ToHttpApiData DatasetIdentifier where
-  toUrlPiece (DatasetIdentifier di) = let (a,b) = T.splitAt 4 di in a <> "-" <> b <> ".json"
 
-validateIdentifier::DatasetIdentifier->Maybe DatasetIdentifier
-validateIdentifier (DatasetIdentifier di) = if (rightLength di && rightChars di) then Just (DatasetIdentifier di) else Nothing where
-  rightLength t = T.length t == 8
-  rightChar c = isLower c || isDigit c
-  rightChars t = T.foldl (\b c-> b && (rightChar c)) True t
-
-type QueryMap a = M.Map T.Text a
-
-type SocrataColumnName = T.Text
-type SocrataValue = T.Text -- how do we type this
-
-data SocrataFilter  = SocrataFilter { column::SocrataColumnName, value::SocrataValue }
-
-type SocrataFilters = QueryMap SocrataValue
 
 addFilter::SocrataFilter->SocrataFilters->SocrataFilters
 addFilter (SocrataFilter c v) qm = M.insert c v qm
